@@ -1,0 +1,99 @@
+---
+description: 
+globs: 
+alwaysApply: false
+---
+# link da documentacao: https://cash.b8.com.br/api/docs/#tag/b8-cash-api
+
+# Plano de Implementação
+
+## Visão Geral
+Este plano define as etapas de integração entre o frontend (breezy-chat-starter) e o backend (b8cash-api), priorizando o que pode ser implementado imediatamente com as APIs existentes e identificando o que precisará ser simulado temporariamente.
+
+## Status da Implementação
+- ✅ **Implementável**: Funcionalidade pode ser implementada com as APIs existentes
+- ⚠️ **Parcialmente implementável**: Implementação possível, mas com limitações
+- ❌ **Simulação necessária**: Não há API disponível, necessário mock ou simulação
+
+## Etapa 1: Fundação e Dashboard
+| Funcionalidade | Componentes Frontend | Endpoints Backend | Status | Observações |
+|----------------|---------------------|------------------|--------|-------------|
+| Autenticação/Login | Login.tsx, contexts/auth | N/A | ❌ | API B8cash não possui endpoint de login. Necessário simular com JWT local. |
+| Registro de novo usuário | Registro.tsx | createUserAccount | ✅ | Implementação direta possível. |
+| Exibir saldo | BalanceCard.tsx | getAccountBalance | ✅ | Implementação direta possível. |
+| Listar transações recentes | TransactionsList.tsx | getTransactions | ✅ | Implementação direta possível. Filtrar as mais recentes. |
+| Gráfico de fluxo de caixa | CashFlowChart.tsx | getTransactions | ⚠️ | API retorna transações, mas precisará de processamento para agrupar por período. |
+
+## Etapa 2: Operações PIX
+| Funcionalidade | Componentes Frontend | Endpoints Backend | Status | Observações |
+|----------------|---------------------|------------------|--------|-------------|
+| Listar chaves PIX | MinhasChavesPix.tsx | getAccountPixKeys | ✅ | Implementação direta possível. |
+| Enviar PIX | PixPorChave.tsx, TransferenciaPixValor.tsx | sendPix | ✅ | Implementação direta possível. |
+| Gerar QR Code para recebimento | ReceberPix.tsx | generateDepositQrCode | ✅ | Implementação direta possível. |
+| Cadastrar nova chave PIX | CadastrarChavePix.tsx | generatePixKey | ✅ | Implementação direta possível. |
+| Consultar chave PIX | MinhasChavesPix.tsx | getKeyData | ✅ | Implementação direta possível. |
+
+## Etapa 3: Transferências e Depósitos
+| Funcionalidade | Componentes Frontend | Endpoints Backend | Status | Observações |
+|----------------|---------------------|------------------|--------|-------------|
+| Transferência TED | TransferenciaContaBancaria.tsx, TransferenciaAgencia.tsx | sendTed | ✅ | Implementação direta possível. |
+| Depósito via PIX | Depositos.tsx | generateDepositQrCode | ✅ | Implementação direta possível. |
+| Depósito via boleto | GerarBoleto.tsx, ConfirmarBoleto.tsx | N/A | ❌ | API B8cash não possui endpoint para boleto. Necessário simular. |
+
+## Etapa 4: Funcionalidades que exigem simulação
+| Funcionalidade | Componentes Frontend | Endpoints Backend | Status | Observações |
+|----------------|---------------------|------------------|--------|-------------|
+| Visualização de cartões | Cards.tsx, CardDetails.tsx | N/A | ❌ | API B8cash não possui endpoints para cartões. Necessário simular. |
+| Configuração de cartões | CardConfig.tsx, CardLimit.tsx | N/A | ❌ | API B8cash não possui endpoints para cartões. Necessário simular. |
+| Pagamento de boletos | PayBill.tsx, PayBillBoleto.tsx | N/A | ❌ | API B8cash não possui endpoint para pagamentos. Necessário simular. |
+| Agendamentos | Agendamentos.tsx, PagamentosAgendamentos.tsx | N/A | ❌ | API B8cash não possui endpoint para agendamentos. Necessário simular. |
+| Histórico detalhado | Historico.tsx, FiltroHistoricoDrawer.tsx | getTransactions | ⚠️ | API retorna transações, mas faltam filtros avançados. Implementar no frontend. |
+
+## Etapa 5: Refinamentos e Otimizações
+| Funcionalidade | Componentes Frontend | Endpoints Backend | Status | Observações |
+|----------------|---------------------|------------------|--------|-------------|
+| Melhorias de UX/UI | Vários | N/A | ✅ | Não requer novos endpoints. |
+| Caching de dados | Todos com chamadas API | N/A | ✅ | Implementar caching no frontend para otimizar chamadas. |
+| Tratamento de erros | Todos | N/A | ✅ | Implementar tratamento consistente de erros da API. |
+| Testes automatizados | Todos | Todos | ⚠️ | Testar simulações e integrações reais. |
+
+## Considerações Finais
+
+### Gaps de Implementação (Prioridades para Desenvolvimento na API B8cash)
+1. **Autenticação/Login**: Maior prioridade, essencial para segurança
+2. **Gestão de Cartões**: Funcionalidade importante para completude do app
+3. **Pagamento de Boletos**: Funcionalidade essencial para banking
+4. **Agendamentos**: Melhoria significativa de UX
+
+### Estratégia para Simulações
+Para funcionalidades sem endpoints correspondentes, recomenda-se:
+1. Criar endpoints mock no backend que retornem dados simulados
+2. Armazenar dados temporariamente em localStorage no frontend
+3. Implementar com interface clara que permita substituir por APIs reais quando disponíveis
+4. Documentar claramente o que é simulado vs. real para facilitar futura transição
+
+## Acompanhamento de Progresso
+
+Para acompanhar o progresso da implementação, utilize o seguinte formato:
+
+### Status atual: Etapa X.Y
+- **Etapa**: [1-5] - Indica a etapa principal atual
+- **Subetapa**: Y - Indica a funcionalidade específica dentro da etapa
+
+Por exemplo:
+- Status atual: **Etapa 1.3** = Trabalhando na Etapa 1 (Fundação e Dashboard), especificamente na funcionalidade 3 (Exibir saldo)
+
+### Checklist de Implementação
+Para cada funcionalidade, rastreie:
+- [ ] Análise e planejamento
+- [ ] Implementação do frontend
+- [ ] Implementação do backend/integração
+- [ ] Testes
+- [ ] Revisão e ajustes
+
+### Nomenclatura de Branches e Commits
+- Branches: `etapa-X.Y-descricao-curta`
+- Commits: `[Etapa X.Y] descrição da alteração`
+
+Isto facilitará o rastreamento do que está sendo implementado em cada momento.
+

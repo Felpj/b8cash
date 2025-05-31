@@ -1,8 +1,26 @@
 const jwt = require('jsonwebtoken');
 
+// ===== BYPASS TEMPORÁRIO PARA DEMONSTRAÇÃO =====
+// TODO: REMOVER APÓS DEMONSTRAÇÃO
+const DEMO_MODE = process.env.DEMO_MODE === 'true' || true; // Ativar para demonstração
+const DEMO_USER = {
+  id: 1,
+  name: "Usuário Demo", 
+  email: "demo@b8cash.com",
+  document: "12345678900"
+};
+// ===============================================
+
 // Middleware para autenticação
 class AuthMiddleware {
   authenticate(req, res, next) {
+    // ===== BYPASS TEMPORÁRIO PARA DEMONSTRAÇÃO =====
+    if (DEMO_MODE) {
+      req.user = DEMO_USER; // Injeta usuário demo
+      return next();
+    }
+    // ===============================================
+
     const authHeader = req.headers['authorization'];
 
     // Verifica se o header está presente

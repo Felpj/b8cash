@@ -9,15 +9,183 @@ generator client {
 }
 
 datasource db {
-  provider = "postgresql"
+  provider = "mysql"
   url      = env("DATABASE_URL")
 }
 
 model User {
-  id        Int   @id @default(autoincrement())
-  name      String
-  email     String   @unique
-  password  String
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  id             Int                @id @default(autoincrement())
+  name           String
+  document       String
+  email          String             @unique
+  passwordHash   String
+  phoneNumber    String?
+  createdAt      DateTime           @default(now())
+  updatedAt      DateTime           @updatedAt
+
+  accounts       Account[]
+  configurations UserConfiguration[]
+  pixKeys        PixKey[]
+  notifications  Notification[]
+  activityLogs   ActivityLog[]
+  errorLogs      ErrorLog[]
 }
+
+model Account {
+  id            Int       @id @default(autoincrement())
+  userId        Int
+  bankNumber    String    // Novo campo para o número do banco (274)
+  agencyNumber  String
+  agencyDigit   String    // Novo campo para o dígito da agência
+  accountNumber String
+  accountDigit  String    // Novo campo para o dígito da conta
+  balance       Decimal   @db.Decimal(10,2)
+  accountType   String
+  status        String
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  user          User      @relation(fields: [userId], references: [id])
+  cards         Card[]
+  transactions  Transaction[]
+  pixKeys       PixKey[]
+}
+
+model Card {
+  id              Int       @id @default(autoincrement())
+  accountId       Int
+  cardNumber      String
+  cardHolderName  String
+  cardType        String
+  brand           String
+  expirationDate  DateTime
+  limitValue      Decimal   @db.Decimal(10,2)
+  status          String
+  requires2fa     Boolean
+  last2faVerified DateTime?
+  securityToken   String?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  account         Account   @relation(fields: [accountId], references: [id])
+  cardHistories   CardHistory[]
+}
+
+model CardHistory {
+  id           Int      @id @default(autoincrement())
+  cardId       Int
+  changedField String
+  oldValue     String
+  newValue     String
+  changedBy    String
+  changedAt    DateTime @default(now())
+
+  card         Card     @relation(fields: [cardId], references: [id])
+}
+
+model Transaction {
+  id                Int                   @id @default(autoincrement())
+  accountId         Int
+  amount            Decimal               @db.Decimal(10,2)
+  transactionType   String
+  status            String
+  description       String
+  transactionDate   DateTime
+  categoryId        Int?
+  transferReference String?
+  paymentMethod     String?
+  createdAt         DateTime              @default(now())
+  updatedAt         DateTime              @updatedAt
+
+  account           Account               @relation(fields: [accountId], references: [id])
+  category          TransactionCategory?  @relation(fields: [categoryId], references: [id])
+}
+
+model TransactionCategory {
+  id           Int            @id @default(autoincrement())
+  name         String
+  icon         String?
+  color        String?
+  createdAt    DateTime       @default(now())
+  updatedAt    DateTime       @updatedAt
+
+  transactions Transaction[]
+}
+
+model UserConfiguration {
+  id          Int      @id @default(autoincrement())
+  userId      Int
+  configKey   String
+  configValue String
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  user        User     @relation(fields: [userId], references: [id])
+}
+
+model Notification {
+  id         Int      @id @default(autoincrement())
+  userId     Int
+  title      String
+  message    String
+  type       String
+  isRead     Boolean  @default(false)
+  createdAt  DateTime @default(now())
+  readAt     DateTime?
+
+  user       User     @relation(fields: [userId], references: [id])
+}
+
+model PixKey {
+  id          Int      @id @default(autoincrement())
+  userId      Int
+  accountId   Int
+  keyValue    String
+  keyType     String
+  status      String
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  user        User     @relation(fields: [userId], references: [id])
+  account     Account  @relation(fields: [accountId], references: [id])
+}
+
+model ActivityLog {
+  id          Int      @id @default(autoincrement())
+  userId      Int
+  action      String
+  description String
+  ipAddress   String?
+  createdAt   DateTime @default(now())
+
+  user        User     @relation(fields: [userId], references: [id])
+}
+
+model ErrorLog {
+  id             Int      @id @default(autoincrement())
+  timestamp      DateTime @default(now())
+  userId         Int?
+  module         String
+  errorCode      String?
+  errorMessage   String
+  stackTrace     String?
+  environment    String?
+  ipAddress      String?
+  additionalInfo String?
+
+  user           User?    @relation(fields: [userId], references: [id])
+}
+
+model WebhookLog {
+  id             Int       @id @default(autoincrement())
+  receivedAt     DateTime  @default(now())
+  notificationType String?
+  requestHeaders String    @db.Text     // Armazenado como JSON string
+  requestBody    String    @db.Text     // Armazenado como JSON string
+  ipAddress      String?
+  processed      Boolean   @default(false)
+  processedAt    DateTime?
+  notes          String?   @db.Text     // Notas ou observações adicionais
+}
+
+

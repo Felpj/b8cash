@@ -1,0 +1,54 @@
+---
+description: 
+globs: 
+alwaysApply: false
+---
+# link da documentacao: https://cash.b8.com.br/api/docs/#tag/b8-cash-api
+# Your rule content
+
+[dashboard.controlelr.js](mdc:src/dashboard/dashboard.controlelr.js) [dashboard.routes.js](mdc:src/dashboard/dashboard.routes.js) [dashboard.service.js](mdc:src/dashboard/dashboard.service.js)
+
+
+Read file: src/b8cash-api/b8cash.routes.js
+
+Read file: src/b8cash-api/b8cash.controller.js
+
+Read file: src/b8cash-api/b8cash.service.js
+Com base nas imagens do dashboard e na análise do banco de dados e dos módulos B8cash, segue o mapeamento das funções necessárias para implementar o dashboard:
+
+## 1. Funções para implementar no dashboard.service.js:
+
+1. **getSaldoDisponivel(accountId)**
+   - Exibe o saldo atual (R$ 56.165,24 na imagem)
+
+2. **getEntradasSaidas(accountId)**
+   - Retorna os valores de entrada (R$ 80.189,76) e saída (R$ 24.214,19)
+
+3. **getFluxoCaixa(accountId, periodo)**
+   - Obtém dados para o gráfico de fluxo de caixa
+
+4. **getTransacoesRecentes(accountId, limite)**
+   - Lista as transações recentes na parte inferior
+
+5. **getCartoesUsuario(userId)**
+   - Exibe os cartões do usuário (físico e digitais)
+
+6. **getFiltrosTransacoes(accountId, filtros)**
+   - Implementa os filtros de data e tipo de lançamento (entradas/saídas)
+
+## 2. Análise dos métodos existentes no B8cash-api que podem ser utilizados:
+
+| Função no dashboard | Método existente no B8cash | Status |
+|---------------------|----------------------------|--------|
+| getSaldoDisponivel | getAccountBalance | ✅ Disponível |
+| getEntradasSaidas | getTransactions (filtrar por tipo) | ✅ Disponível, precisa filtrar |
+| getFluxoCaixa | getTransactions (agregação por data) | ✅ Disponível, precisa agregar |
+| getTransacoesRecentes | getTransactions (limitar resultados) | ✅ Disponível, precisa limitar |
+| getCartoesUsuario | **Não existe** | ❌ Faltando |
+| getFiltrosTransacoes | getTransactions (aplicar filtros) | ✅ Disponível, precisa filtrar |
+
+## 3. Métodos que precisam ser implementados no B8cash-api:
+
+1. **getCards(userId/accountId)** - Para listar os cartões do usuário (físicos e digitais)
+2. **getTransactionsByPeriod(accountId, startDate, endDate)** - Para facilitar a filtragem por período
+3. **getTransactionSummary(accountId, period)** - Para agregar os dados do fluxo de caixa por período

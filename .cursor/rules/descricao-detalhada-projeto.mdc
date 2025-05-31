@@ -1,0 +1,150 @@
+---
+description: 
+globs: 
+alwaysApply: true
+---
+# link da documentacao: https://cash.b8.com.br/api/docs/#tag/b8-cash-api
+# Your rule content
+
+### 1. Visão Geral da Aplicação
+
+Trata‑se de um **banco digital completo**, pensado para mobile e web, que concentra em um único ambiente:
+
+* **Conta‑corrente** multimoeda (por ora BRL)  
+* **Cartão** (crédito e débito) virtual e físico  
+* **Pagamentos** (boletos, contas, tributos, recargas)  
+* **Transferências** internas, TED/DOC e **PIX** (pagamentos instantâneos)  
+* **Depósitos** via boleto ou PIX (Depósito por QR Code)  
+* **Histórico** detalhado de movimentações, com filtros avançados  
+* **Segurança de nível bancário** (MFA, roles, criptografia, auditoria)  
+* **Monitoramento e observabilidade** (logs de atividade e de erro)
+
+O design das telas que você enviou segue o fluxo clássico de onboarding → dashboard → operações → detalhes, e todas as ações já foram refletidas em um **esquema relacional normalizado**.
+
+---
+
+### 2. Domínio Funcional mapeado no Banco de Dados
+
+| Domínio | Principais Tabelas | Observações |
+|---------|-------------------|-------------|
+| **Usuários & Segurança** | `users`, `user_roles`, `roles`, `permissions`, `user_mfa`, `sessions`, `password_reset_tokens` | Hash bcrypt/argon2, MFA por TOTP/SMS, política de senha, controle de sessão única opcional |
+| **Contas** | `accounts`, `account_types`, `account_limits` | Conta pode ser Pessoal ou Empresarial; limites diários configuráveis |
+| **Cartões** | `cards`, `card_status_history`, `card_transactions`, `card_limits`, `card_tokens` | Emissão virtual imediata; bloqueio/desbloqueio registrado em `card_status_history` |
+| **Depósitos** | `deposit_requests`, `deposit_transactions` | Suporta boleto (com linha digitável) e PIX (QR Code dinâmico) |
+| **Pagamentos** | `payment_requests`, `payment_bills`, `scheduled_payments` | Boletos, contas de concessionárias, tributos; agendamento com status `PENDING`, `EXECUTED`, `FAILED` |
+| **Transferências Internas & TED/DOC** | `transfer_requests`, `transfer_transactions` | Cálculo de tarifa e previsão de liquidação (D+0, D+1) |
+| **PIX** | `pix_keys`, `pix_transactions`, `pix_refunds` | Chaves (CPF/CNPJ, e‑mail, telefone, EVPK); devolução parcial/total |
+| **Histórico** | `transactions_view` (view ou materializada), `activity_logs` | `transactions_view` consolida todas as transações; `activity_logs` guarda quem fez o quê, quando e de onde |
+| **Logs de Erro** | `error_logs` | Captura exceções, stack trace, módulo, ambiente |
+| **Notificações** | `notifications`, `notification_preferences` | Push, e‑mail e/ou SMS; eventos disparados via webhooks internos |
+| **Auditoria & Conformidade** | `kyc_documents`, `kyc_reviews`, `compliance_flags` | KYC nível 2; flags de AML e PEP |
+
+---
+
+### 3. Fluxos de Usuário (baseados nas telas)
+
+1. **Onboarding & KYC**  
+   - Cadastro → envio de documentos → revisão KYC (`kyc_documents`, `kyc_reviews`).  
+   - Em caso de pendência, usuário recebe notificação.
+
+2. **Dashboard / Home**  
+   - Exibe saldo (`accounts.balance`), cartão principal, atalhos de Depósito, PIX, Pagar, Transferir.  
+   - Últimas 3 transações vêm de `transactions_view` (ordenadas por `timestamp DESC`).
+
+3. **Depósito**  
+   - Usuário escolhe **Boleto** ou **PIX Depósito**.  
+   - Cria‑se registro em `deposit_requests` (`STATUS = WAITING_PAYMENT`).  
+   - Webhook do provedor de boleto/PIX atualiza `deposit_transactions` e credita conta.
+
+4. **Pagamentos**  
+   - Scanner de código de barras → pré‑validação (`payment_bills`).  
+   - Confirmação com MFA → gera `payment_requests` (status `PROCESSING`).  
+   - Motor de pagamentos atualiza `payment_requests.status` e insere linha em `transactions_view`.
+
+5. **Transferência**  
+   - Interna: lookup em `accounts` do destinatário.  
+   - TED/DOC: dados bancários externos.  
+   - Cria `transfer_requests` e, após processamento, `transfer_transactions`.
+
+6. **PIX**  
+   - Telas: Pagar, Receber, Copia‑e‑cola, QR Code, Gerenciar Chaves.  
+   - Todas mapeadas a `pix_keys` e `pix_transactions`.  
+   - Devoluções usam `pix_refunds` ligado à transação original.
+
+7. **Cartões**  
+   - Lista de cartões (`cards`).  
+   - Ações: gerar virtual, bloquear/desbloquear, alterar limite, ver fatura (soma de `card_transactions` agrupadas por ciclo).  
+   - Cada ação gera log em `card_status_history` e `activity_logs`.
+
+8. **Histórico**  
+   - Filtros por data, tipo, valor mínimo/máximo.  
+   - Query na `transactions_view` com paginação.
+
+9. **Suporte & Configurações**  
+   - Preferências de notificação (`notification_preferences`).  
+   - Segurança: trocar senha, ativar/desativar MFA (`user_mfa`).  
+   - Central de ajuda: registro de ticket pode usar `support_tickets` (tabela opcional).
+
+---
+
+### 4. Arquitetura de Alto Nível
+
+* **Backend** em serviços (monolito modular ou micro‑serviços):
+  * **Auth Service** (JWT, refresh, MFA)  
+  * **Core Banking Service** (contas, transações)  
+  * **Payment Service** (boletos, contas, TED/DOC)  
+  * **PIX Service** (conexão SPI)  
+  * **Card Service** (tokenização, integração com bandeira)  
+  * **Notification Service** (push/e‑mail/SMS)  
+  * **Logging & Monitoring** (grava `activity_logs`, `error_logs`, métricas Prometheus)
+
+* **Filas** (RabbitMQ/Kafka) para desacoplar eventos:  
+  `payment_processed`, `pix_settled`, `card_blocked`, etc.
+
+* **Banco de Dados** relacional (PostgreSQL) com partições por data em `transactions_view` para performance.
+
+* **Cache** (Redis) para sessões, chaves PIX, limites de rate‑limit.
+
+* **Infra**: conteinerizada (Docker/K8s), pipelines CI/CD, IaC (Terraform).
+
+---
+
+### 5. Padrões de Segurança
+
+* Hash de senha com Argon2id.  
+* MFA (TOTP ou push).  
+* Criptografia AES‑256 para dados sensíveis (PAN do cartão, chaves PIX).  
+* Rate‑limit e detecção de fraude em camada de API‑Gateway.  
+* **RBAC** granular via `roles`/`permissions`.  
+* Auditoria imutável: `activity_logs` + backups off‑site.
+
+---
+
+### 6. Observabilidade
+
+* **error_logs** capturam exceções → enviados ao Sentry / Loki.  
+* **activity_logs** para trilha de auditoria e analytics.  
+* Dashboards Grafana: performance de API, tempo médio de liquidação, falhas de pagamento.
+
+---
+
+### 7. Possíveis Próximos Passos
+
+| Prioridade | Item | Observação |
+|------------|------|------------|
+| Alta | Implementar **pix_refunds** & conciliação SPI | Obrigatório para conformidade BACEN |
+| Média | Módulo de **Investimentos** | Poderia estender `accounts` com subcontas |
+| Média | **Suporte In‑App** (chat) | `support_tickets`, `chat_messages` |
+| Baixa | **Marketplace** de serviços | Integração externa, novas tabelas `marketplace_orders` |
+
+---
+
+## Como usar esta descrição
+
+* **UX/UI** → garante que cada ação de tela tem mapeamento claro em tabela/endpoint.  
+* **Backend** → usa a tabela correspondente como truth‑source e segue as sequências descritas.  
+* **DevOps** → configura observabilidade e segurança conforme seções 5 e 6.  
+* **QA** → deriva casos de teste de cada fluxo enumerado.  
+* **Gestão** → acompanha roadmap de extensões.
+
+Com este panorama, qualquer desenvolvedor que chegue ao projeto consegue entender rapidamente **o que o produto faz, onde cada dado vive e como as telas conversam com o backend**.

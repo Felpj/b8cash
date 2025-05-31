@@ -1,32 +1,147 @@
 const { PrismaClient } = require('@prisma/client');
 const prisma = new PrismaClient();
 const bcrypt = require('bcrypt');
+const B8cashService = require('../b8cash-api/b8cash.service');
 
 class UserService {
+    constructor() {
+        this.b8cashService = new B8cashService();
+    }
 
     // Criar um novo usuário
-    async createUser(name, email, password) {
+    async createUser(name, document, phone, email, password) {
+        console.log('Iniciando a criação do usuário:', { name, document, phone, email }); // Log estratégico
         try {
-            // Hash da senha
-            const hashedPassword = await bcrypt.hash(password, 10);
-
-            // Criação do usuário no banco de dados
-            const user = await prisma.user.create({
-                data: {
-                    name,
-                    email,
-                    password: hashedPassword,
+            // Verificar se o usuário já existe (por email ou documento)
+            let user = await prisma.user.findFirst({
+                where: {
+                    OR: [
+                        { email },
+                        { document },
+                    ],
                 },
             });
 
-            return user;
+            let isNewUser = false;
+
+            // Se o usuário não existir, criar no banco local
+            if (!user) {
+                isNewUser = true;
+                // Hash da senha
+                const hashedPassword = await bcrypt.hash(password, 10);
+                console.log('Senha hasheada com sucesso.'); // Log estratégico
+
+                // Criação do usuário no banco de dados
+                user = await prisma.user.create({
+                    data: {
+                        name,
+                        email,
+                        passwordHash: hashedPassword,
+                        phoneNumber: phone,
+                        document: document,
+                    },
+                });
+                console.log('Usuário criado no banco de dados:', user); // Log estratégico
+            } else {
+                console.log('Usuário já existe no banco de dados:', user); // Log estratégico
+            }
+
+            // Chamar API B8cash para registrar o usuário
+            try {
+                // Normalizar dados para API (como no Postman que funciona)
+                const normalizedName = name.toLowerCase();
+                const normalizedPhone = phone.replace(/[\(\)\s\-]/g, ''); // Remove ( ) espaços e traços
+                
+                console.log('[USER SERVICE] Dados originais:', { name, phone });
+                console.log('[USER SERVICE] Dados normalizados para API B8Cash:', {
+                    document,
+                    email, 
+                    name: normalizedName,
+                    phone: normalizedPhone
+                });
+                
+                const b8Response = await this.b8cashService.createUserAccount(document, email, normalizedName, normalizedPhone);
+                console.log('Resposta da API B8cash:', b8Response); // Log estratégico
+
+                // Se sucesso = true, usuário foi criado com sucesso
+                if (b8Response.success) {
+                    return {
+                        id: user.id,
+                        name: user.name,
+                        email: user.email,
+                        phone: user.phoneNumber,
+                        isNewUser,
+                        message: isNewUser ? 'Usuário criado com sucesso' : 'Usuário já existe',
+                        success: true
+                    };
+                } else {
+                    // Se sucesso = false, usuário precisa fazer KYC
+                    // Retornar dados de KYC para o frontend com informações do usuário local
+                    return {
+                        success: false,
+                        message: b8Response.message,
+                        data: b8Response.data,
+                        requiresKyc: true,
+                        user: {
+                            id: user.id,
+                            name: user.name,
+                            email: user.email,
+                            document: user.document,
+                            phone: user.phoneNumber
+                        },
+                        kycUrl: b8Response.data?.url,
+                        userId: b8Response.data?.userId
+                    };
+                }
+            } catch (b8Error) {
+                console.error('Erro na API B8cash:', b8Error.message);
+                // Se houve erro na API B8cash mas o usuário foi criado localmente, deletar o usuário local
+                if (isNewUser) {
+                    await prisma.user.delete({
+                        where: { id: user.id },
+                    });
+                    console.log('Usuário deletado do banco de dados após falha na API B8cash');
+                }
+                throw new Error(`Erro ao processar a requisição na API B8cash: ${b8Error.message}`);
+            }
+
         } catch (error) {
             console.error('Erro ao criar usuário:', error.message);
-            throw new Error('Não foi possível criar o usuário.');
+            
+            // Verificar se o erro é de e-mail duplicado
+            if (error.code === 'P2002' && error.meta?.target?.includes('email')) {
+                console.warn('Tentativa de criar usuário com e-mail duplicado:', email); // Log de aviso
+                throw new Error('Este e-mail já está em uso.');
+            }
+            
+            throw error; // Propagar o erro original
         }
     }
 
-    // Buscar usuário pelo e-mail
+    // Buscar usuário pelo documento
+    async getUserByDocument(document) {
+        try {
+            const user = await prisma.user.findFirst({
+                where: {
+                    document,
+                },
+                include: {
+                    accounts: true
+                }
+            });
+
+            if (!user) {
+                throw new Error('Usuário não encontrado.');
+            }
+
+            return user;
+        } catch (error) {
+            console.error('Erro ao buscar usuário por documento:', error.message);
+            throw new Error('Não foi possível buscar o usuário.');
+        }
+    }
+
+    // Buscar usuário pelo e-mail (manter para compatibilidade)
     async getUserByEmail(email) {
         try {
             const user = await prisma.user.findUnique({
@@ -45,8 +160,6 @@ class UserService {
             throw new Error('Não foi possível buscar o usuário.');
         }
     }
-
-
 
     // Buscar todos os usuários
     async getAllUsers() {
@@ -135,6 +248,54 @@ class UserService {
                 throw new Error('Usuário não encontrado para deletar.');
             }
             throw new Error('Não foi possível deletar o usuário.');
+        }
+    }
+
+    // Salvar dados bancários do usuário
+    async saveAccountData(userId, accountData) {
+        try {
+            // Verificar se já existe uma conta para este usuário
+            const existingAccount = await prisma.account.findFirst({
+                where: {
+                    userId: userId,
+                    accountNumber: accountData.accountNumber
+                }
+            });
+
+            if (existingAccount) {
+                // Atualizar conta existente
+                return await prisma.account.update({
+                    where: { id: existingAccount.id },
+                    data: {
+                        bankNumber: accountData.bankNumber,
+                        agencyNumber: accountData.agencyNumber,
+                        agencyDigit: accountData.agencyDigit,
+                        accountNumber: accountData.accountNumber,
+                        accountDigit: accountData.accountDigit,
+                        status: accountData.status,
+                        accountType: 'corrente', // Padrão
+                        balance: 0 // Será atualizado via getAccountBalance
+                    }
+                });
+            } else {
+                // Criar nova conta
+                return await prisma.account.create({
+                    data: {
+                        userId: userId,
+                        bankNumber: accountData.bankNumber,
+                        agencyNumber: accountData.agencyNumber,
+                        agencyDigit: accountData.agencyDigit,
+                        accountNumber: accountData.accountNumber,
+                        accountDigit: accountData.accountDigit,
+                        status: accountData.status,
+                        accountType: 'corrente', // Padrão
+                        balance: 0 // Será atualizado via getAccountBalance
+                    }
+                });
+            }
+        } catch (error) {
+            console.error('Erro ao salvar dados bancários:', error.message);
+            throw new Error('Não foi possível salvar os dados bancários.');
         }
     }
 }
