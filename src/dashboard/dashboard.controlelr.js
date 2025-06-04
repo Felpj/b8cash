@@ -11,19 +11,22 @@ class DashboardController {
    * @param {Object} res - Objeto de resposta
    */
   async getSaldoDisponivel(req, res) {
-    const accountNumber = req.headers['account-number'];
-
     try {
+      const accountNumber = req.accountNumber;
+      const userDocument = req.user.document;
+
       if (!accountNumber) {
         return res.status(400).json({
-          error: 'O cabeçalho ACCOUNT-NUMBER é obrigatório para consultar o saldo disponível.'
+          success: false,
+          error: 'Dados bancários não encontrados. Faça login novamente.'
         });
       }
 
-      const result = await this.dashboardService.getSaldoDisponivel(accountNumber);
-      res.status(200).json(result);
+      const result = await this.dashboardService.getSaldoDisponivel(accountNumber, userDocument);
+      res.status(200).json({ success: true, data: result });
     } catch (error) {
-      res.status(500).json({ error: error.message });
+      console.error(`[DashboardController] Erro em getSaldoDisponivel:`, error.message);
+      res.status(500).json({ success: false, error: error.message });
     }
   }
 
@@ -33,20 +36,23 @@ class DashboardController {
    * @param {Object} res - Objeto de resposta
    */
   async getEntradasSaidas(req, res) {
-    const accountNumber = req.headers['account-number'];
-    const queryParams = req.query; // Captura todos os query params
-
     try {
+      const accountNumber = req.accountNumber;
+      const userDocument = req.user.document;
+      const queryParams = req.query;
+
       if (!accountNumber) {
         return res.status(400).json({
-          error: 'O cabeçalho ACCOUNT-NUMBER é obrigatório para consultar entradas e saídas.'
+          success: false,
+          error: 'Dados bancários não encontrados. Faça login novamente.'
         });
       }
-      // Passa queryParams para o serviço
-      const result = await this.dashboardService.getEntradasSaidas(accountNumber, queryParams);
-      res.status(200).json(result);
+
+      const result = await this.dashboardService.getEntradasSaidas(accountNumber, userDocument, queryParams);
+      res.status(200).json({ success: true, data: result });
     } catch (error) {
-      res.status(500).json({ error: error.message });
+      console.error(`[DashboardController] Erro em getEntradasSaidas:`, error.message);
+      res.status(500).json({ success: false, error: error.message });
     }
   }
 
@@ -55,21 +61,25 @@ class DashboardController {
    * @param {Object} req - Objeto de requisição
    * @param {Object} res - Objeto de resposta
    */
-// controller ─ rota GET /fluxo-caixa
-async getFluxoCaixa(req, res) {
-  const accountNumber = req.headers['account-number'];
-  if (!accountNumber) {
-    return res.status(400).json({ error: 'Cabeçalho ACCOUNT-NUMBER é obrigatório.' });
-  }
+  async getFluxoCaixa(req, res) {
+    try {
+      // accountNumber e userDocument vêm automaticamente do middleware de autenticação
+      const accountNumber = req.accountNumber;
+      const userDocument = req.user.document;
 
-  try {
-    const data = await this.dashboardService.getFluxoCaixa(accountNumber, req.query);
-    res.status(200).json(data);
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
-}
+      if (!accountNumber) {
+        return res.status(400).json({ 
+          success: false, 
+          error: 'Dados bancários não encontrados. Faça login novamente.' 
+        });
+      }
 
+      const data = await this.dashboardService.getFluxoCaixa(accountNumber, userDocument, req.query);
+      res.status(200).json({ success: true, data });
+    } catch (err) {
+      res.status(500).json({ success: false, error: err.message });
+    }
+  }
 
   /**
    * Obtém as transações mais recentes
@@ -77,20 +87,24 @@ async getFluxoCaixa(req, res) {
    * @param {Object} res - Objeto de resposta
    */
   async getTransacoesRecentes(req, res) {
-    const accountNumber = req.headers['account-number'];
-    const queryParams = req.query; // Captura todos os query params (incluindo limit, etc.)
-
     try {
+      // accountNumber e userDocument vêm automaticamente do middleware de autenticação
+      const accountNumber = req.accountNumber;
+      const userDocument = req.user.document;
+      const queryParams = req.query; // Captura todos os query params (incluindo limit, etc.)
+
       if (!accountNumber) {
         return res.status(400).json({
-          error: 'O cabeçalho ACCOUNT-NUMBER é obrigatório para consultar transações recentes.'
+          success: false,
+          error: 'Dados bancários não encontrados. Faça login novamente.'
         });
       }
-      // Passa queryParams para o serviço. O limite padrão será tratado no service se não vier em queryParams.
-      const result = await this.dashboardService.getTransacoesRecentes(accountNumber, queryParams);
-      res.status(200).json(result);
+
+      // Passa userDocument e queryParams para o serviço. O limite padrão será tratado no service se não vier em queryParams.
+      const result = await this.dashboardService.getTransacoesRecentes(accountNumber, userDocument, queryParams);
+      res.status(200).json({ success: true, data: result });
     } catch (error) {
-      res.status(500).json({ error: error.message });
+      res.status(500).json({ success: false, error: error.message });
     }
   }
 
@@ -100,13 +114,15 @@ async getFluxoCaixa(req, res) {
    * @param {Object} res - Objeto de resposta
    */
   async getFiltrosTransacoes(req, res) {
-    const accountNumber = req.headers['account-number'];
-    const { dataInicio, dataFim, tipos, limite, pagina } = req.query;
-
     try {
+      // accountNumber vem automaticamente do middleware de autenticação
+      const accountNumber = req.accountNumber;
+      const { dataInicio, dataFim, tipos, limite, pagina } = req.query;
+
       if (!accountNumber) {
         return res.status(400).json({
-          error: 'O cabeçalho ACCOUNT-NUMBER é obrigatório para filtrar transações.'
+          success: false,
+          error: 'Dados bancários não encontrados. Faça login novamente.'
         });
       }
 
@@ -120,9 +136,9 @@ async getFluxoCaixa(req, res) {
       };
 
       const result = await this.dashboardService.getFiltrosTransacoes(accountNumber, filtros);
-      res.status(200).json(result);
+      res.status(200).json({ success: true, data: result });
     } catch (error) {
-      res.status(500).json({ error: error.message });
+      res.status(500).json({ success: false, error: error.message });
     }
   }
 

@@ -107,10 +107,11 @@ class B8cashService {
     const uniqueId = uuidv4().slice(0, 30);
     const timestamp = Math.floor(Date.now() / 1000); 
 
-    // O body precisa ser enviado no formato conforme documentação
+    // O body precisa ser enviado no formato conforme documentação B8Cash
+    // Baseado na documentação oficial: https://cash.b8.com.br/api/docs/#tag/b8-cash-api/POST/sendTed
     const body = {
       destination: {
-        document: destination.document,
+        userDocument: destination.document, // CORRIGIDO: API B8Cash espera 'userDocument' ao invés de 'document'
         name: destination.name,
         bankNumber: destination.bankNumber,
         agencyNumber: destination.agencyNumber,
@@ -128,8 +129,13 @@ class B8cashService {
     body.signature = B8cashUtils.generateSignature(body, {}, this.apiSecret);
     
     // Log do payload completo
-    console.log(`[B8CASH API] sendTed - Payload completo:`, body);
+    console.log(`[B8CASH API] sendTed - Payload completo (CORRIGIDO):`, body);
     console.log(`[B8CASH API] sendTed - Headers incluirão ACCOUNT-NUMBER: ${accountNumber}`);
+    console.log(`[B8CASH API] sendTed - Verificação do campo document:`, {
+      campoOriginal: 'document',
+      campoCorrigido: 'userDocument',
+      valor: destination.document
+    });
     
     try {
       console.log(`[API REQUEST] POST /sendTed - Enviando TED para ${destination.name}, valor: ${amount}`);
@@ -192,6 +198,9 @@ class B8cashService {
         break;
       case 'cpf':
         apiKeyType = 'cpf';
+        break;
+      case 'cnpj':
+        apiKeyType = 'cnpj';
         break;
       case 'email':
         apiKeyType = 'email';
@@ -433,24 +442,35 @@ class B8cashService {
     const body = {
       timestamp: Math.floor(Date.now() / 1000)
     };
+    
+    // Gera a assinatura
     body.signature = B8cashUtils.generateSignature(body, {}, this.apiSecret);
+    
+    const headers = this._getHeaders(accountNumber);
+
+    console.log(`[API REQUEST] GET /getAccountBalance - Account: ${accountNumber}`);
 
     try {
       const { body: responseBody, statusCode } = await request(url, {
         method: 'GET',
-        headers: this._getHeaders(accountNumber), // Envia os headers 
+        headers: headers,
         body: JSON.stringify(body)
       });
 
       if (statusCode !== 200) {
         const errorData = await responseBody.json();
-        throw new Error(`Erro ao consultar o saldo: ${statusCode} - ${errorData.message}`);
+        console.error(`[B8CashService] Erro ${statusCode}:`, errorData.message);
+        throw new Error(`Erro ao consultar o saldo: ${statusCode} - ${errorData.message || JSON.stringify(errorData)}`);
       }
 
       const data = await responseBody.json();
-      return data; // Retorna os dados de sucesso da API
+      console.log(`[API RESPONSE] Saldo obtido com sucesso para conta ${accountNumber}`);
+      return data;
     } catch (error) {
-      console.error('Erro ao consultar o saldo:', error.message);
+      if (error.message.includes('Erro ao consultar o saldo:')) {
+        throw error;
+      }
+      console.error('[B8CashService] Erro ao consultar o saldo:', error.message);
       throw new Error('Não foi possível consultar o saldo da conta.');
     }
   }

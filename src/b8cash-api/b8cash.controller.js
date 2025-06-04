@@ -34,13 +34,32 @@ class B8cashController {
     const accountNumber = req.headers['account-number']; // Lê o ACCOUNT-NUMBER do header
     const { destination, amount } = req.body;
 
+    console.log('[B8CASH CONTROLLER] sendTed - Payload recebido:', {
+      accountNumber,
+      destination,
+      amount,
+      bodyKeys: Object.keys(req.body),
+      destinationKeys: destination ? Object.keys(destination) : 'destination é null/undefined'
+    });
+
+    console.log('[B8CASH CONTROLLER] sendTed - Verificação detalhada do destination:', {
+      hasDestination: !!destination,
+      destinationType: typeof destination,
+      hasDocument: destination ? !!destination.document : false,
+      documentValue: destination ? `"${destination.document}"` : 'N/A',
+      documentLength: destination?.document?.length || 0,
+      documentType: destination ? typeof destination.document : 'N/A',
+      observacao: 'IMPORTANTE: API B8Cash espera userDocument, não document'
+    });
+
     try {
       // Validação dos parâmetros obrigatórios
       if (!accountNumber || !destination || !amount) {
         return res.status(400).json({ error: 'Parâmetros insuficientes para enviar TED.' });
       }
 
-      // Validação da estrutura do destination conforme documentação
+      // Validação da estrutura do destination conforme documentação B8Cash
+      // IMPORTANTE: A API B8Cash processa internamente 'document' como 'userDocument'
       const requiredDestinationFields = [
         'document', 'name', 'bankNumber', 'agencyNumber', 
         'agencyDigit', 'accountNumber', 'accountDigit', 'accountType'
@@ -48,6 +67,7 @@ class B8cashController {
       
       for (const field of requiredDestinationFields) {
         if (!destination[field]) {
+          console.log(`[B8CASH CONTROLLER] Campo ausente: ${field} = "${destination[field]}"`);
           return res.status(400).json({ 
             error: `Campo obrigatório ausente em destination: ${field}` 
           });
@@ -58,6 +78,8 @@ class B8cashController {
       if (typeof amount !== 'number' || amount <= 0) {
         return res.status(400).json({ error: 'O valor deve ser um número positivo.' });
       }
+
+      console.log('[B8CASH CONTROLLER] sendTed - Enviando para B8cashService com document mapeado para userDocument');
 
       // Chama o serviço para enviar TED
       const result = await this.b8cashService.sendTed(accountNumber, destination, amount);
@@ -87,17 +109,23 @@ class B8cashController {
         });
       }
       
-      // Validação para key (valor da chave), opcional apenas para chaves aleatórias (evp)
-      if (keyType !== 'evp' && !key) {
+      // CORRIGIDO: Validação para key - obrigatório apenas para tipos específicos
+      // Para chaves aleatórias (evp), o key é opcional (será gerado automaticamente)
+      const tiposQueRequeremKey = ['celular', 'email', 'cpf', 'cnpj', 'phone'];
+      
+      if (tiposQueRequeremKey.includes(keyType.toLowerCase()) && !key) {
         return res.status(400).json({
-          error: 'O parâmetro key é obrigatório para o tipo de chave selecionado.',
+          error: `O parâmetro key é obrigatório para o tipo de chave "${keyType}".`,
         });
       }
+
+      console.log(`[B8cashController] generatePixKey - Account: ${accountNumber}, KeyType: ${keyType}, Key: ${key || 'AUTO-GENERATED'}`);
 
       // Chama o serviço para gerar a chave PIX, passando accountNumber, keyType e key
       const result = await this.b8cashService.generatePixKey(accountNumber, keyType, key);
       res.status(200).json(result);
     } catch (error) {
+      console.error(`[B8cashController] Erro em generatePixKey:`, error.message);
       res.status(500).json({ error: error.message });
     }
   }

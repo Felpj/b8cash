@@ -19,7 +19,6 @@ app.use((req, res, next) => {
   
   // Responder imediatamente para OPTIONS
   if (req.method === 'OPTIONS') {
-    console.log('[CORS] Respondendo OPTIONS para:', req.url);
     return res.status(200).end();
   }
   

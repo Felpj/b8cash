@@ -8,24 +8,34 @@ class DashboardService {
   /**
    * Obtém o saldo disponível na conta
    * @param {string} accountId - Número da conta
+   * @param {string} userDocument - Documento do usuário
    * @returns {Promise<Object>} - Objeto contendo o saldo formatado
    */
-  async getSaldoDisponivel(accountId) { 
+  async getSaldoDisponivel(accountId, userDocument) { 
     try {
-      // Chama o método da API B8cash para obter o saldo
+      if (!accountId) {
+        throw new Error('AccountId é obrigatório para obter o saldo');
+      }
+
+      console.log(`[DashboardService] Obtendo saldo para conta: ${accountId}`);
+      
+      // Chama o método da API B8cash para obter o saldo (sem userDocument)
       const result = await this.b8cashService.getAccountBalance(accountId);
       
-      // Verifica se o resultado contém o saldo
-      if (!result || !result.success || !result.data || !result.data.available) {
+      // Verifica se o resultado contém o saldo (aceita saldo 0 como válido)
+      if (!result || !result.success || !result.data || result.data.available === undefined) {
+        console.log(`[DashboardService] Resposta inválida da API:`, result);
         throw new Error('Não foi possível obter o saldo da conta');
       }
       
-      return {
+      const saldoFormatado = {
         saldo: result.data.available,
         accountNumber: accountId
       };
+      
+      return saldoFormatado;
     } catch (error) {
-      console.error('Erro ao obter saldo disponível:', error.message);
+      console.error('[DashboardService] Erro ao obter saldo:', error.message);
       throw new Error('Não foi possível obter o saldo disponível da conta');
     }
   }
@@ -33,13 +43,18 @@ class DashboardService {
   /**
    * Obtém o total de entradas e saídas da conta
    * @param {string} accountId - Número da conta
+   * @param {string} userDocument - Documento do usuário
    * @returns {Promise<Object>} - Objeto contendo os totais de entrada e saída
    */
-  async getEntradasSaidas(accountId, queryParams = {}) {
+  async getEntradasSaidas(accountId, userDocument, queryParams = {}) {
     try {
-      console.log(`[DashboardService] getEntradasSaidas - Account: ${accountId}, Params: ${JSON.stringify(queryParams)}`);
-      // Chama o método da API B8cash para obter as transações, passando os queryParams
-      const result = await this.b8cashService.getTransactions(accountId, queryParams);
+      console.log(`[DashboardService] getEntradasSaidas - Account: ${accountId}, UserDocument: ${userDocument}, Params: ${JSON.stringify(queryParams)}`);
+      
+      // Adiciona o userDocument aos queryParams
+      const paramsWithDocument = { ...queryParams, userDocument };
+      
+      // Chama o método da API B8cash para obter as transações, passando os queryParams com userDocument
+      const result = await this.b8cashService.getTransactions(accountId, paramsWithDocument);
       
       if (!result || !result.success || !result.transactions || !Array.isArray(result.transactions)) {
         // Retorna zero se não houver transações ou a resposta for inválida, em vez de lançar erro, 
@@ -83,16 +98,21 @@ class DashboardService {
   /**
    * Obtém os dados para o gráfico de fluxo de caixa por período
    * @param {string} accountId - Número da conta
+   * @param {string} userDocument - Documento do usuário
    * @param {string} periodo - Período para filtro (mes, trimestre, semestre, ano)
    * @returns {Promise<Object>} - Dados para o gráfico de fluxo de caixa nos formatos Guided e Advanced
    */
-  async getFluxoCaixa(accountId, queryParams = {}) {
+  async getFluxoCaixa(accountId, userDocument, queryParams = {}) {
     try {
-      console.log(`[DashboardService] getFluxoCaixa - Account: ${accountId}, Params: ${JSON.stringify(queryParams)}`);
+      console.log(`[DashboardService] getFluxoCaixa - Account: ${accountId}, UserDocument: ${userDocument}, Params: ${JSON.stringify(queryParams)}`);
+      
+      // Adiciona o userDocument aos queryParams
+      const paramsWithDocument = { ...queryParams, userDocument };
+      
       // Se queryParams contiver startDate e endDate, eles serão usados pela chamada à API.
       // A lógica de "periodo" (mês, trimestre) pode ser mantida como fallback ou removida se o front sempre enviar datas.
       // Por ora, a chamada à API usará os queryParams como vierem.
-      const result = await this.b8cashService.getTransactions(accountId, queryParams);
+      const result = await this.b8cashService.getTransactions(accountId, paramsWithDocument);
 
       if (!result || !result.success || !result.transactions || !Array.isArray(result.transactions) || result.transactions.length === 0) {
         console.warn('[DashboardService] getFluxoCaixa - Não foi possível obter as transações ou não há transações para o período.');
@@ -284,16 +304,18 @@ class DashboardService {
   /**
    * Obtém as transações mais recentes
    * @param {string} accountId - Número da conta
+   * @param {string} userDocument - Documento do usuário
    * @param {Object} queryParams - Parâmetros da query
    * @returns {Promise<Object>} - Lista de transações recentes
    */
-  async getTransacoesRecentes(accountId, queryParams = {}) {
+  async getTransacoesRecentes(accountId, userDocument, queryParams = {}) {
     try {
-      console.log(`[DashboardService] getTransacoesRecentes - Account: ${accountId}`);
+      console.log(`[DashboardService] getTransacoesRecentes - Account: ${accountId}, UserDocument: ${userDocument}`);
       
       // 1. Buscar TODOS os registros (com limit alto para forçar a API)
       const paramsParaAPI = { 
         ...queryParams,
+        userDocument, // Adiciona o userDocument aos parâmetros
         limit: 10000 // Limit alto para pegar todos os registros disponíveis
       };
       
@@ -571,117 +593,6 @@ class DashboardService {
     }
   }
 
-  // Método para obter o saldo da conta
-  async getAccountBalance(accountNumber) {
-    try {
-      // Chama o método da API B8cash para obter o saldo
-      const result = await this.b8cashService.getAccountBalance(accountNumber);
-      
-      // Verifica se o resultado contém o saldo
-      if (!result || !result.success || !result.data || !result.data.available) {
-        throw new Error('Não foi possível obter o saldo da conta');
-      }
-      
-      return {
-        saldo: result.data.available,
-        accountNumber: accountNumber
-      };
-    } catch (error) {
-      console.error('Erro ao obter saldo:', error.message);
-      throw new Error('Não foi possível obter o saldo da conta');
-    }
-  }
-
-  // Método para obter transações recentes
-  async getRecentTransactions(accountNumber, queryParams = {}) {
-    try {
-      console.log(`[DashboardService] getRecentTransactions - Account: ${accountNumber}, Params: ${JSON.stringify(queryParams)}`);
-      // Define um limite padrão se não for fornecido, mas permite que outros filtros sejam passados
-      const paramsToUse = { limit: queryParams.limit || 5, ...queryParams };
-      
-      const result = await this.b8cashService.getTransactions(accountNumber, paramsToUse);
-      return result;
-    } catch (error) {
-      console.error('[DashboardService] Erro em getRecentTransactions:', error.message);
-      throw new Error(`Erro ao buscar transações recentes no DashboardService: ${error.message}`);
-    }
-  }
-
-  // Método para obter dados do fluxo de caixa
-  async getCashFlow(accountNumber, queryParams = {}) {
-    try {
-      console.log(`[DashboardService] getCashFlow - Account: ${accountNumber}, Params: ${JSON.stringify(queryParams)}`);
-      // Os filtros de período (startDate, endDate) serão usados diretamente pela chamada ao b8cashService
-      const transactionsData = await this.b8cashService.getTransactions(accountNumber, queryParams);
-
-      if (!transactionsData || !transactionsData.transactions || transactionsData.transactions.length === 0) {
-        return { labels: [], datasets: [] }; // Retorna estrutura vazia se não houver transações
-      }
-
-      // A lógica de agregação do fluxo de caixa permanece, mas agora opera sobre dados potencialmente filtrados
-      const cashFlow = transactionsData.transactions.reduce((acc, transaction) => {
-        const date = new Date(transaction.transactionDate || transaction.createdAt).toLocaleDateString('pt-BR', { month: 'short', day: 'numeric' });
-        if (!acc[date]) {
-          acc[date] = { entrada: 0, saida: 0 };
-        }
-        if (transaction.side === 'in' || transaction.transaction_type === 'entrada' || transaction.transaction_type === 'pix_recebido' || transaction.transaction_type === 'deposito' || transaction.transaction_type === 'transferencia_entrada') {
-          acc[date].entrada += parseFloat(transaction.amount);
-        } else if (transaction.side === 'out' || transaction.transaction_type === 'saida' || transaction.transaction_type === 'pix_enviado' || transaction.transaction_type === 'pagamento' || transaction.transaction_type === 'transferencia_saida') {
-          acc[date].saida += parseFloat(transaction.amount);
-        }
-        return acc;
-      }, {});
-
-      const labels = Object.keys(cashFlow);
-      const entradas = labels.map(label => cashFlow[label].entrada);
-      const saidas = labels.map(label => cashFlow[label].saida);
-
-      return {
-        labels,
-        datasets: [
-          { label: 'Entradas', data: entradas, backgroundColor: 'rgba(75, 192, 192, 0.5)', borderColor: 'rgb(75, 192, 192)', fill: true },
-          { label: 'Saídas', data: saidas, backgroundColor: 'rgba(255, 99, 132, 0.5)', borderColor: 'rgb(255, 99, 132)', fill: true },
-        ],
-      };
-    } catch (error) {
-      console.error('[DashboardService] Erro em getCashFlow:', error.message);
-      throw new Error(`Erro ao calcular dados do fluxo de caixa no DashboardService: ${error.message}`);
-    }
-  }
-
-  // Método para obter um resumo de entradas e saídas para o dashboard
-  async getEntradasSaidasDashboard(accountNumber, queryParams = {}) {
-    try {
-      console.log(`[DashboardService] getEntradasSaidasDashboard - Account: ${accountNumber}, Params: ${JSON.stringify(queryParams)}`);
-      // Os filtros de período (startDate, endDate) serão usados diretamente pela chamada ao b8cashService
-      const transactionsData = await this.b8cashService.getTransactions(accountNumber, queryParams);
-
-      if (!transactionsData || !transactionsData.transactions) {
-        return { totalEntradas: 0, totalSaidas: 0 };
-      }
-
-      let totalEntradas = 0;
-      let totalSaidas = 0;
-
-      transactionsData.transactions.forEach(transaction => {
-        const amount = parseFloat(transaction.amount);
-        if (transaction.side === 'in' || transaction.transaction_type === 'entrada' || transaction.transaction_type === 'pix_recebido' || transaction.transaction_type === 'deposito' || transaction.transaction_type === 'transferencia_entrada') {
-          totalEntradas += amount;
-        } else if (transaction.side === 'out' || transaction.transaction_type === 'saida' || transaction.transaction_type === 'pix_enviado' || transaction.transaction_type === 'pagamento' || transaction.transaction_type === 'transferencia_saida') {
-          totalSaidas += amount;
-        }
-      });
-
-      return {
-        totalEntradas: totalEntradas.toFixed(2),
-        totalSaidas: totalSaidas.toFixed(2),
-      };
-    } catch (error) {
-      console.error('[DashboardService] Erro em getEntradasSaidasDashboard:', error.message);
-      throw new Error(`Erro ao calcular resumo de entradas/saídas no DashboardService: ${error.message}`);
-    }
-  }
-
   // Método auxiliar para gerar todos os meses entre duas datas
   gerarMesesPeriodo(dataInicio, dataFim) {
     const meses = [];
@@ -726,7 +637,6 @@ class DashboardService {
       contador++;
     }
     
-    console.log(`[DashboardService] gerarMesesPeriodo - Gerados ${meses.length} meses:`, meses.map(m => m.chave));
     return meses;
   }
 
@@ -775,7 +685,6 @@ class DashboardService {
       contador++;
     }
     
-    console.log(`[DashboardService] gerarDiasPeriodo - Gerados ${dias.length} dias:`, dias.map(d => d.chave));
     return dias;
   }
 
@@ -816,7 +725,6 @@ class DashboardService {
       contador++;
     }
     
-    console.log(`[DashboardService] gerarSemanasPeriodo - Geradas ${semanas.length} semanas:`, semanas.map(s => s.chave));
     return semanas;
   }
 
@@ -850,7 +758,3 @@ class DashboardService {
 }
 
 module.exports = DashboardService;
-
-
-
-

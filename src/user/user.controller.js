@@ -24,8 +24,8 @@ class UserController {
         res.status(200).json(result);
       } else {
         console.log('Usuário processado com sucesso:', { id: result.id, email: result.email, isNewUser: result.isNewUser });
-        // Retornamos a resposta completa da API B8cash junto com os dados do usuário local
-        res.status(201).json(result);
+      // Retornamos a resposta completa da API B8cash junto com os dados do usuário local
+      res.status(201).json(result);
       }
     } catch (error) {
       console.error('Erro ao processar usuário:', error.message); // Log de erro

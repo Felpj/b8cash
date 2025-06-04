@@ -17,7 +17,7 @@ const generatePixKey = async (accountNumber, keyType, keyValue) => {
     console.log(`[PIX SERVICE] Gerando chave PIX: accountNumber=${accountNumber}, keyType=${keyType}, keyValue=${keyValue || 'N/A'}`);
     
     // Para tipos de chave que necessitam um valor, verificar se foi fornecido
-    if ((keyType === 'email' || keyType === 'cpf') && !keyValue) {
+    if ((keyType === 'email' || keyType === 'cpf' || keyType === 'cnpj' || keyType === 'celular') && !keyValue) {
       throw new Error(`Para o tipo de chave "${keyType}" é necessário informar o valor da chave.`);
     }
     

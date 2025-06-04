@@ -27,7 +27,7 @@ const generatePixKey = async (req, res) => {
     }
     
     // Validar se keyValue é necessário para o tipo de chave
-    if ((keyType === 'email' || keyType === 'cpf') && !keyValue) {
+    if ((keyType === 'email' || keyType === 'cpf' || keyType === 'cnpj' || keyType === 'celular') && !keyValue) {
       return res.status(400).json({
         success: false,
         message: `Para o tipo de chave "${keyType}" é necessário informar o valor da chave.`

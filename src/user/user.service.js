@@ -2,6 +2,7 @@ const { PrismaClient } = require('@prisma/client');
 const prisma = new PrismaClient();
 const bcrypt = require('bcrypt');
 const B8cashService = require('../b8cash-api/b8cash.service');
+const { isValidDocument, getDocumentType, cleanDocument } = require('../utils/documentValidation');
 
 class UserService {
     constructor() {
@@ -11,13 +12,24 @@ class UserService {
     // Criar um novo usuário
     async createUser(name, document, phone, email, password) {
         console.log('Iniciando a criação do usuário:', { name, document, phone, email }); // Log estratégico
+        
         try {
+            // Limpar e validar documento
+            const cleanedDocument = cleanDocument(document);
+            const documentType = getDocumentType(cleanedDocument);
+            
+            if (documentType === 'invalid') {
+                throw new Error('CPF ou CNPJ inválido');
+            }
+            
+            console.log(`Documento validado: ${cleanedDocument} (${documentType})`);
+            
             // Verificar se o usuário já existe (por email ou documento)
             let user = await prisma.user.findFirst({
                 where: {
                     OR: [
                         { email },
-                        { document },
+                        { document: cleanedDocument },
                     ],
                 },
             });
@@ -38,7 +50,7 @@ class UserService {
                         email,
                         passwordHash: hashedPassword,
                         phoneNumber: phone,
-                        document: document,
+                        document: cleanedDocument, // Salvar documento limpo
                     },
                 });
                 console.log('Usuário criado no banco de dados:', user); // Log estratégico
@@ -52,15 +64,15 @@ class UserService {
                 const normalizedName = name.toLowerCase();
                 const normalizedPhone = phone.replace(/[\(\)\s\-]/g, ''); // Remove ( ) espaços e traços
                 
-                console.log('[USER SERVICE] Dados originais:', { name, phone });
+                console.log('[USER SERVICE] Dados originais:', { name, phone, document });
                 console.log('[USER SERVICE] Dados normalizados para API B8Cash:', {
-                    document,
+                    document: cleanedDocument,
                     email, 
                     name: normalizedName,
                     phone: normalizedPhone
                 });
                 
-                const b8Response = await this.b8cashService.createUserAccount(document, email, normalizedName, normalizedPhone);
+                const b8Response = await this.b8cashService.createUserAccount(cleanedDocument, email, normalizedName, normalizedPhone);
                 console.log('Resposta da API B8cash:', b8Response); // Log estratégico
 
                 // Se sucesso = true, usuário foi criado com sucesso
@@ -70,6 +82,8 @@ class UserService {
                         name: user.name,
                         email: user.email,
                         phone: user.phoneNumber,
+                        document: user.document,
+                        documentType: documentType,
                         isNewUser,
                         message: isNewUser ? 'Usuário criado com sucesso' : 'Usuário já existe',
                         success: true
@@ -87,6 +101,7 @@ class UserService {
                             name: user.name,
                             email: user.email,
                             document: user.document,
+                            documentType: documentType,
                             phone: user.phoneNumber
                         },
                         kycUrl: b8Response.data?.url,
@@ -121,9 +136,16 @@ class UserService {
     // Buscar usuário pelo documento
     async getUserByDocument(document) {
         try {
+            // Limpar documento antes de buscar
+            const cleanedDocument = cleanDocument(document);
+            
+            if (!isValidDocument(cleanedDocument)) {
+                throw new Error('CPF ou CNPJ inválido');
+            }
+            
             const user = await prisma.user.findFirst({
                 where: {
-                    document,
+                    document: cleanedDocument,
                 },
                 include: {
                     accounts: true
@@ -296,6 +318,22 @@ class UserService {
         } catch (error) {
             console.error('Erro ao salvar dados bancários:', error.message);
             throw new Error('Não foi possível salvar os dados bancários.');
+        }
+    }
+
+    // Buscar dados bancários do usuário (para verificar se já existem)
+    async getUserAccountData(userId) {
+        try {
+            const account = await prisma.account.findFirst({
+                where: {
+                    userId: userId
+                }
+            });
+
+            return account; // Retorna null se não encontrar
+        } catch (error) {
+            console.error('Erro ao buscar dados bancários do usuário:', error.message);
+            return null; // Retorna null em caso de erro para não quebrar o fluxo
         }
     }
 }
